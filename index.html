@@ -65,6 +65,7 @@ button.sw{flex:none;width:30px;height:30px;min-height:30px;padding:0;border-radi
 #msg{font-size:13px;opacity:.85;min-height:20px}
 .imp textarea{height:150px;margin-bottom:10px}
 .imp .two{display:flex;gap:8px}
+#pvw img{max-width:100%;display:block;border:1.5px solid var(--line);border-radius:8px;margin-top:6px}
 .empty{font-size:14px;opacity:.6;padding:6px 0}
 @media (min-width:900px){
   body{padding:28px 32px;font-size:16px}
@@ -106,6 +107,7 @@ button.sw{flex:none;width:30px;height:30px;min-height:30px;padding:0;border-radi
     <div class="lbl"><span>저장 비율</span><select id="ratio" aria-label="저장 비율"><option value="auto" selected>자동 (세로로 길게)</option><option value="land">4:3 가로</option><option value="port">3:4 세로</option></select></div>
     <div class="lbl"><span>GIF 속도</span><select id="gsp" aria-label="GIF 글자 속도"><option value="slow" selected>느리게</option><option value="mid">보통</option><option value="fast">빠르게</option></select></div>
     <div id="msg"></div>
+    <div id="pvw"></div>
   </div>
   <details class="card imp"><summary>대본 일괄 입력</summary>
     <textarea id="prm" spellcheck="false" aria-label="대본 생성 프롬프트" style="height:130px"></textarea>
@@ -333,18 +335,30 @@ function paint(c,P,k,fx=FX0){
   const fl=[];shown.forEach((m,n)=>lines[n].forEach(t=>fl.push([t,m.s])));
   fl.slice(-maxL).forEach(([t,sd])=>{c.fillStyle=cols[sd];c.fillText(t,LX,y);y+=LH});
 }
-async function saveFile(name,data){
-  const d=await claude.use("downloads");
-  if(!d){say("이 화면에서는 저장을 쓸 수 없어요");return}
-  try{await d.save({filename:name,data});say("저장 요청 완료 ✓")}
-  catch(e){say(e&&e.code==="declined"?"저장을 취소했어요":"저장 실패: "+(e&&e.message||""))}
+const run=f=>f().catch(e=>say("실패: "+((e&&e.message)||e)));
+function showPreview(name,data){
+  const blob=data instanceof Blob?data:new Blob([data],{type:name.endsWith(".gif")?"image/gif":"image/png"});
+  const fr=new FileReader();
+  fr.onload=()=>{const im=new Image();im.src=fr.result;im.alt=name;const p=document.createElement("div");p.style.cssText="font-size:12px;opacity:.7;margin-top:10px";
+    p.textContent="미리보기 — 저장이 안 되면 이미지를 길게 눌러(PC는 우클릭) 저장하세요";$("pvw").replaceChildren(p,im)};
+  fr.readAsDataURL(blob);
 }
-$("png").onclick=async()=>{
+async function saveFile(name,data){
+  showPreview(name,data);
+  let d=null;
+  try{d=window.claude&&await window.claude.use("downloads")}catch(e){}
+  if(!d){say("저장 기능을 쓸 수 없어요. 아래 미리보기를 길게 눌러 저장해 주세요");return}
+  try{await d.save({filename:name,data});say("저장 요청 완료 ✓")}
+  catch(e){const c=e&&e.code;say(c==="declined"?"저장을 취소했어요":"저장 실패 ("+(c||"")+") "+((e&&e.message)||"")+" — 아래 미리보기를 길게 눌러 저장해 주세요")}
+}
+$("png").onclick=()=>run(async()=>{
   say("PNG 만드는 중...");
   const P=await prep(msgs);P.S=2;const cv=document.createElement("canvas");cv.width=P.CW*2;cv.height=P.H*2;
   paint(cv.getContext("2d"),P,P.list.length-1);
-  cv.toBlob(b=>saveFile("walkie.png",b),"image/png");
-};
+  const b=await new Promise(r=>cv.toBlob(r,"image/png"));
+  if(!b)throw new Error("이미지가 너무 커요. 저장 비율을 바꿔 보세요");
+  await saveFile("walkie.png",b);
+});
 /* minimal GIF encoder */
 function lzw(px){
   const out=[];let bits=0,nb=0,size=9,next=258,dict=new Map();
@@ -410,7 +424,7 @@ const SEQ=[
  {...FX0,arcs:3,tp:.8,d:12},
  {...FX0,arcs:3,tp:1,d:110}
 ];
-$("gif").onclick=async()=>{
+$("gif").onclick=()=>run(async()=>{
   say("GIF 준비 중...");await tick();
   const list=msgs.slice(-12),P=await prep(list),PAL=mkPal(col(0),col(1),THM[TH].bg);
   const cv=document.createElement("canvas");cv.width=P.CW;cv.height=P.H;
@@ -432,8 +446,8 @@ $("gif").onclick=async()=>{
     fr.push({bb,idx:quant(d.data,P.CW,bb,PAL),d:plan[n].d});prev=u;
   }
   say("GIF 저장 준비...");
-  saveFile("walkie.gif",gif(fr,P.CW,P.H,PAL.bytes));
-};
+  await saveFile("walkie.gif",new Blob([gif(fr,P.CW,P.H,PAL.bytes)],{type:"image/gif"}));
+});
 </script>
 </body>
 </html>
