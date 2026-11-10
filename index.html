@@ -343,11 +343,16 @@ function showPreview(name,data){
     p.textContent="미리보기 — 저장이 안 되면 이미지를 길게 눌러(PC는 우클릭) 저장하세요";$("pvw").replaceChildren(p,im)};
   fr.readAsDataURL(blob);
 }
+function plainDownload(name,data){
+  const blob=data instanceof Blob?data:new Blob([data]);
+  const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=name;a.style.display="none";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),10000);
+}
 async function saveFile(name,data){
   showPreview(name,data);
   let d=null;
   try{d=window.claude&&await window.claude.use("downloads")}catch(e){}
-  if(!d){say("저장 기능을 쓸 수 없어요. 아래 미리보기를 길게 눌러 저장해 주세요");return}
+  if(!d){try{plainDownload(name,data);say("다운로드를 시작했어요 ✓ (안 되면 아래 미리보기를 길게 눌러 저장하세요)")}catch(e){say("자동 저장이 막혔어요. 아래 미리보기를 길게 눌러 저장해 주세요")}return}
   try{await d.save({filename:name,data});say("저장 요청 완료 ✓")}
   catch(e){const c=e&&e.code;say(c==="declined"?"저장을 취소했어요":"저장 실패 ("+(c||"")+") "+((e&&e.message)||"")+" — 아래 미리보기를 길게 눌러 저장해 주세요")}
 }
